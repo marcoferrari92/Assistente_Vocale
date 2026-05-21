@@ -26,8 +26,8 @@ def login_utente():
         
         if st.button("Accedi", use_container_width=True):
             # Controlla la corrispondenza all'interno dei commerciali nei tuoi Secrets
-            if "commerciali" in st.secrets and username in st.secrets["commerciali"]:
-                db_user = st.secrets["commerciali"][username]
+            if "utenti" in st.secrets and username in st.secrets["utenti"]:
+                db_user = st.secrets["utenti"][username]
                 if password == db_user["password"]:
                     st.session_state.autenticato = True
                     st.success("✅ Accesso autorizzato!")
