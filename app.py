@@ -10,12 +10,12 @@ st.set_page_config(
 # --- 2. INTERFACCIA UTENTE ---
 st.title("Imprendo - Corsi in Multilingua")
 
-# --- 3. LOGICA DI ASCOLTO CONTINUO CON BANNER MULTI-RIGA AUTOMATICO ---
+# --- 3. LOGICA DI ASCOLTO CONTINUO CON BANNER MULTI-RIGA ---
 st.write("")
 
 import streamlit.components.v1 as components
 
-# Blocco unico HTML/JS: gestisce microfono, trascrizione e traduzione fino a 3 righe per lingua senza tagli
+# Blocco unico HTML/JS: garantisce lo spazio visivo fisso per 3 righe per lingua
 js_speech_component = """
 <div style="font-family: sans-serif; margin-bottom: 5px;">
     <div id="caption-banner" style="
@@ -25,7 +25,6 @@ js_speech_component = """
         font-family: 'Helvetica Neue', Arial, sans-serif;
         font-weight: bold;
         line-height: 1.4;
-        margin-bottom: 20px;
         border: 2px solid #333333;
         box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
         overflow: hidden;
@@ -35,8 +34,10 @@ js_speech_component = """
             color: #00FF66; 
             font-size: 32px; 
             margin-bottom: 16px;
-            overflow: hidden;
-        ">In attesa che il docente inizi a parlare... Il testo comparirà qui.</div>
+            min-height: 135px;
+            max-height: 135px;
+            overflow-y: auto;
+        ">In attesa che il docente inizi a parlare... Il testo in italiano occuperà fino a tre righe prima di sostituirsi.</div>
         
         <div id="text-en" style="
             color: #FFCC00; 
@@ -44,8 +45,10 @@ js_speech_component = """
             font-style: italic; 
             border-top: 1px solid #222; 
             padding-top: 12px;
-            overflow: hidden;
-        ">The English translation will appear here.</div>
+            min-height: 100px;
+            max-height: 100px;
+            overflow-y: auto;
+        ">The English translation will appear here and will occupy up to three lines.</div>
     </div>
 
     <div style="color: #888888; font-size: 14px; padding: 12px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e;">
@@ -129,6 +132,7 @@ js_speech_component = """
             
             if (fraseCorrenteIt.length > 0) {
                 textItDiv.innerText = fraseCorrenteIt;
+                textItDiv.scrollTop = textItDiv.scrollHeight;
             }
 
             clearTimeout(translationTimeout);
@@ -136,6 +140,7 @@ js_speech_component = """
                 if (fraseCorrenteIt.length > 0) {
                     const traduzioneEn = await traduciInInglese(fraseCorrenteIt);
                     textEnDiv.innerText = traduzioneEn;
+                    textEnDiv.scrollTop = textEnDiv.scrollHeight;
                 }
             }, 300);
         };
@@ -143,5 +148,6 @@ js_speech_component = """
 </script>
 """
 
-# CORREZIONE CRITICA: Portato l'height a 400px per contenere comodamente l'intera estensione della pagina senza tagliare la barra dei controlli
-components.html(js_speech_component, height=400)
+# Portato l'height dell'iFrame a 480px per garantire che il banner da 3+3 righe 
+# e la barra dei controlli verde siano totalmente visibili senza tagli di pixel
+components.html(js_speech_component, height=480)
