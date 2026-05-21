@@ -31,9 +31,10 @@ st.write("### 🎙️ Stato Microfono Continuo")
 
 import streamlit.components.v1 as components
 
-# Blocco HTML/JS: gestisce microfono, trascrizione e traduzione simultanea (via API di traduzione del browser)
+# [Il codice dentro js_speech_component rimane identico a prima]
 js_speech_component = """
 <div style="font-family: sans-serif; margin-bottom: 15px;">
+    <!-- BANNER BILINGUE AD ALTO CONTRASTO -->
     <div id="caption-banner" style="
         background-color: #111111;
         padding: 24px;
@@ -53,6 +54,7 @@ js_speech_component = """
         <div id="text-en" style="color: #FFCC00; font-size: 26px; font-style: italic; border-top: 1px solid #222; padding-top: 8px;">The English translation will appear here.</div>
     </div>
 
+    <!-- CONTROLLI DI STATO E PULSANTE -->
     <div style="color: #888888; font-size: 14px; padding: 12px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e;">
         <div>
             <span id="status-dot" style="height: 10px; width: 10px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
@@ -84,7 +86,6 @@ js_speech_component = """
         let isRecognizing = false;
         let finalTranscriptIt = '';
 
-        // Funzione client-side per tradurre rapidamente il testo via API libera
         async function traduciInInglese(testo) {
             if (!testo.trim()) return '';
             try {
@@ -126,7 +127,6 @@ js_speech_component = """
             }
         };
 
-        // Timer per evitare di bombardare l'API di traduzione ad ogni singola lettera
         let translationTimeout;
 
         recognition.onresult = (event) => {
@@ -143,14 +143,12 @@ js_speech_component = """
                 }
             }
             
-            // 1. Aggiorna immediatamente la parte in Italiano (real-time totale)
             let completoIt = finalTranscriptIt + interimTranscriptIt;
             if (completoIt.trim().length > 0) {
                 textItDiv.innerText = completoIt;
                 captionBanner.scrollTop = captionBanner.scrollHeight;
             }
 
-            // 2. Gestisce la traduzione in Inglese (ottimizzata con debounce)
             clearTimeout(translationTimeout);
             translationTimeout = setTimeout(async () => {
                 if (completoIt.trim().length > 0) {
@@ -158,9 +156,8 @@ js_speech_component = """
                     textEnDiv.innerText = traduzioneEn;
                     captionBanner.scrollTop = captionBanner.scrollHeight;
                 }
-            }, 400); // Aspetta 400ms di stabilità prima di aggiornare l'inglese
+            }, 400);
 
-            // 3. Invia la frase definitiva a Streamlit per lo storico in background
             if (currentFinalPhraseIt.length > 0) {
                 window.parent.postMessage({
                     type: 'streamlit:setComponentValue',
@@ -172,18 +169,24 @@ js_speech_component = """
 </script>
 """
 
-# Renderizza il widget bilingue
+# Renderizziamo l'oggetto HTML/JS
 audio_data = components.html(js_speech_component, height=290)
 
-# Aggiorna la cronologia in background su Streamlit
-if audio_data:
-    if not st.session_state.cronologia_trascrizione or st.session_state.cronologia_trascrizione[-1] != audio_data:
-        st.session_state.cronologia_trascrizione.append(audio_data)
+# --- CORREZIONE DEL BUG QUI ---
+# Estraiamo in modo sicuro la stringa testuale passata dal componente iframe di Streamlit
+if audio_data is not None:
+    # Se il dato è una stringa diretta, la usiamo, altrimenti la ignoriamo o convertiamo
+    testo_pulito = str(audio_data).strip()
+    
+    if testo_pulito and testo_pulito != "None":
+        if not st.session_state.cronologia_trascrizione or st.session_state.cronologia_trascrizione[-1] != testo_pulito:
+            st.session_state.cronologia_trascrizione.append(testo_pulito)
 
 # --- 6. CRONOLOGIA COMPLETA DELLA LEZIONE ---
 st.divider()
 with st.expander("📝 Guarda l'intera trascrizione della lezione (Storico Frasi in Italiano)"):
     if st.session_state.cronologia_trascrizione:
+        # Ora st.session_state.cronologia_trascrizione contiene solo stringhe pulite!
         testo_completo = " ... ".join(st.session_state.cronologia_trascrizione)
         st.write(testo_completo)
         
