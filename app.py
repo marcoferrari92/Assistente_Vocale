@@ -2,7 +2,7 @@ import streamlit as st
 
 # --- 1. CONFIGURAZIONE PAGINA AD ALTO CONTRASTO ---
 st.set_page_config(
-    page_title="AI Live Captioning per Non Udenti", 
+    page_title="AI Live Captioning & Translation", 
     page_icon="🧏", 
     layout="wide"
 )
@@ -14,10 +14,6 @@ st.markdown("""
         font-size: 18px;
         color: #888888;
     }
-    /* Rende il box dell'expander più leggibile nel tema scuro/chiaro */
-    .stAlert {
-        font-size: 18px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -26,40 +22,41 @@ if "cronologia_trascrizione" not in st.session_state:
     st.session_state.cronologia_trascrizione = []
 
 # --- 4. INTERFACCIA UTENTE ---
-st.title("🧏 Morpheus Live Subtitles")
-st.subheader("Sottotitoli automatici ad alta visibilità per l'ascolto delle lezioni")
+st.title("🧏 Morpheus Live Subtitles & Translation")
+st.subheader("Sottotitoli automatici e traduzione simultanea in inglese ad alta visibilità")
 st.divider()
 
-# --- 5. LOGICA DI ASCOLTO CONTINUO ED ELABORAZIONE ---
+# --- 5. LOGICA DI ASCOLTO CONTINUO, TRADUZIONE ED ELABORAZIONE ---
 st.write("### 🎙️ Stato Microfono Continuo")
 
 import streamlit.components.v1 as components
 
-# Unico blocco HTML/JS: gestisce il microfono, lo stato e il banner visivo direttamente nel browser
+# Blocco HTML/JS: gestisce microfono, trascrizione e traduzione simultanea (via API di traduzione del browser)
 js_speech_component = """
 <div style="font-family: sans-serif; margin-bottom: 15px;">
     <div id="caption-banner" style="
         background-color: #111111;
-        color: #00FF66;
         padding: 24px;
         border-radius: 12px;
-        font-size: 32px;
         font-family: 'Helvetica Neue', Arial, sans-serif;
         font-weight: bold;
-        line-height: 1.5;
-        min-height: 140px;
-        max-height: 140px;
+        line-height: 1.6;
+        min-height: 180px;
+        max-height: 180px;
         margin-bottom: 20px;
         border: 2px solid #333333;
         box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
         overflow-y: auto;
         word-wrap: break-word;
-    ">In attesa che il docente inizi a parlare... Il testo comparirà qui in tempo reale.</div>
+    ">
+        <div id="text-it" style="color: #00FF66; font-size: 32px; margin-bottom: 12px;">In attesa che il docente inizi a parlare... Il testo in italiano comparirà qui.</div>
+        <div id="text-en" style="color: #FFCC00; font-size: 26px; font-style: italic; border-top: 1px solid #222; padding-top: 8px;">The English translation will appear here.</div>
+    </div>
 
     <div style="color: #888888; font-size: 14px; padding: 12px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e;">
         <div>
             <span id="status-dot" style="height: 10px; width: 10px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
-            <span id="status-text" style="color: #aaaaaa; font-weight: 500;">Microfono spento. Clicca sul pulsante per attivare l'ascolto continuo.</span>
+            <span id="status-text" style="color: #aaaaaa; font-weight: 500;">Microfono spento. Clicca sul pulsante per attivare l'ascolto continuo bilingue.</span>
         </div>
         <button id="start-btn" style="padding: 10px 20px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s;">🎯 AVVIA ASCOLTO CONTINUO</button>
     </div>
@@ -70,6 +67,8 @@ js_speech_component = """
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
     const captionBanner = document.getElementById('caption-banner');
+    const textItDiv = document.getElementById('text-it');
+    const textEnDiv = document.getElementById('text-en');
     
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -79,11 +78,23 @@ js_speech_component = """
     } else {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = true; // Mostra le parole in tempo reale mentre vengono pronunciate
+        recognition.interimResults = true;
         recognition.lang = 'it-IT';
 
         let isRecognizing = false;
-        let finalTranscript = '';
+        let finalTranscriptIt = '';
+
+        // Funzione client-side per tradurre rapidamente il testo via API libera
+        async function traduciInInglese(testo) {
+            if (!testo.trim()) return '';
+            try {
+                const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=it&tl=en&dt=t&q=${encodeURIComponent(testo)}`);
+                const data = await response.json();
+                return data[0].map(item => item[0]).join('');
+            } catch (error) {
+                return 'Translation error...';
+            }
+        }
 
         startBtn.addEventListener('click', () => {
             if (!isRecognizing) {
@@ -98,7 +109,7 @@ js_speech_component = """
             isRecognizing = true;
             window.autoRestartEnabled = true;
             statusDot.style.background = "#2ecc71";
-            statusText.innerText = "Microfono ATTIVO. Il docente può parlare liberamente senza interruzioni.";
+            statusText.innerText = "Microfono ATTIVO. Servizio di sottotitolazione e traduzione simultanea in corso.";
             startBtn.innerText = "⏹️ FERMA ASCOLTO";
             startBtn.style.backgroundColor = "#e74c3c";
         };
@@ -106,7 +117,6 @@ js_speech_component = """
         recognition.onend = () => {
             isRecognizing = false;
             if (window.autoRestartEnabled) {
-                // Auto-restart immediato se si disconnette per pause lunghe o timeout del browser
                 recognition.start();
             } else {
                 statusDot.style.background = "#e74c3c";
@@ -116,33 +126,45 @@ js_speech_component = """
             }
         };
 
+        // Timer per evitare di bombardare l'API di traduzione ad ogni singola lettera
+        let translationTimeout;
+
         recognition.onresult = (event) => {
-            let interimTranscript = '';
-            let currentFinalPhrase = '';
+            let interimTranscriptIt = '';
+            let currentFinalPhraseIt = '';
 
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
                     const chunk = event.results[i][0].transcript.trim();
-                    finalTranscript += chunk + ' ';
-                    currentFinalPhrase = chunk;
+                    finalTranscriptIt += chunk + ' ';
+                    currentFinalPhraseIt = chunk;
                 } else {
-                    interimTranscript += event.results[i][0].transcript;
+                    interimTranscriptIt += event.results[i][0].transcript;
                 }
             }
             
-            // Aggiorna visivamente il banner sul browser parola per parola
-            let testoDaMostrare = finalTranscript + interimTranscript;
-            if (testoDaMostrare.trim().length > 0) {
-                captionBanner.innerText = testoDaMostrare;
-                // Mantiene lo scroll automatico ancorato verso il basso
+            // 1. Aggiorna immediatamente la parte in Italiano (real-time totale)
+            let completoIt = finalTranscriptIt + interimTranscriptIt;
+            if (completoIt.trim().length > 0) {
+                textItDiv.innerText = completoIt;
                 captionBanner.scrollTop = captionBanner.scrollHeight;
             }
 
-            // Invia la frase definitiva a Streamlit in background solo quando è consolidata
-            if (currentFinalPhrase.length > 0) {
+            // 2. Gestisce la traduzione in Inglese (ottimizzata con debounce)
+            clearTimeout(translationTimeout);
+            translationTimeout = setTimeout(async () => {
+                if (completoIt.trim().length > 0) {
+                    const traduzioneEn = await traduciInInglese(completoIt);
+                    textEnDiv.innerText = traduzioneEn;
+                    captionBanner.scrollTop = captionBanner.scrollHeight;
+                }
+            }, 400); // Aspetta 400ms di stabilità prima di aggiornare l'inglese
+
+            // 3. Invia la frase definitiva a Streamlit per lo storico in background
+            if (currentFinalPhraseIt.length > 0) {
                 window.parent.postMessage({
                     type: 'streamlit:setComponentValue',
-                    value: currentFinalPhrase
+                    value: currentFinalPhraseIt
                 }, '*');
             }
         };
@@ -150,18 +172,17 @@ js_speech_component = """
 </script>
 """
 
-# Renderizza il widget HTML/JS (Banner + Controlli). 
-# Altezza impostata a 250px per contenere l'interfaccia senza scrollbar verticali esterne.
-audio_data = components.html(js_speech_component, height=250)
+# Renderizza il widget bilingue
+audio_data = components.html(js_speech_component, height=290)
 
-# Cattura i dati inviati da JavaScript per aggiornare la cronologia di Streamlit
+# Aggiorna la cronologia in background su Streamlit
 if audio_data:
     if not st.session_state.cronologia_trascrizione or st.session_state.cronologia_trascrizione[-1] != audio_data:
         st.session_state.cronologia_trascrizione.append(audio_data)
 
 # --- 6. CRONOLOGIA COMPLETA DELLA LEZIONE ---
 st.divider()
-with st.expander("📝 Guarda l'intera trascrizione della lezione (Storico Frasi)"):
+with st.expander("📝 Guarda l'intera trascrizione della lezione (Storico Frasi in Italiano)"):
     if st.session_state.cronologia_trascrizione:
         testo_completo = " ... ".join(st.session_state.cronologia_trascrizione)
         st.write(testo_completo)
