@@ -1,11 +1,11 @@
 import streamlit as st
 
 # --- 1. CONFIGURAZIONE PAGINA AD ALTO CONTRASTO ---
-#st.set_page_config(
-#    page_title="AI Live Captioning & Translation", 
-#    page_icon="🧏", 
-#    layout="wide"
-#)
+st.set_page_config(
+    page_title="AI Live Captioning & Translation", 
+    page_icon="🧏", 
+    layout="wide"
+)
 
 # --- 2. INTERFACCIA UTENTE ---
 st.title("🧏 Morpheus Live Subtitles & Translation")
