@@ -9,8 +9,6 @@ st.set_page_config(
 
 # --- 2. INTERFACCIA UTENTE ---
 st.title("🧏 Morpheus Live Subtitles & Translation")
-st.subheader("Sottotitoli automatici e traduzione simultanea in inglese ad alta visibilità")
-st.divider()
 
 # --- 3. LOGICA DI ASCOLTO CONTINUO, TRADUZIONE E BANNER ---
 st.write("### 🎙️ Stato Microfono Continuo")
