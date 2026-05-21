@@ -11,7 +11,7 @@ st.set_page_config(
 st.title("Imprendo - Corsi in Multilingua")
 
 # --- 3. LOGICA DI ASCOLTO CONTINUO CON BANNER MULTI-RIGA AUTOMATICO ---
-st.write("### 🎙️ Stato Microfono Continuo")
+st.write("")
 
 import streamlit.components.v1 as components
 
