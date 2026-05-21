@@ -15,9 +15,9 @@ st.write("")
 
 import streamlit.components.v1 as components
 
-# Blocco unico HTML/JS: gestisce microfono, trascrizione e traduzione fino a 3 righe per lingua
+# Blocco unico HTML/JS: gestisce microfono, trascrizione e traduzione fino a 3 righe per lingua senza tagli
 js_speech_component = """
-<div style="font-family: sans-serif; margin-bottom: 15px;">
+<div style="font-family: sans-serif; margin-bottom: 5px;">
     <div id="caption-banner" style="
         background-color: #111111;
         padding: 24px;
@@ -25,21 +25,17 @@ js_speech_component = """
         font-family: 'Helvetica Neue', Arial, sans-serif;
         font-weight: bold;
         line-height: 1.4;
-        min-height: 240px;
-        max-height: 240px;
         margin-bottom: 20px;
         border: 2px solid #333333;
         box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
-        overflow-y: auto;
+        overflow: hidden;
         word-wrap: break-word;
     ">
         <div id="text-it" style="
             color: #00FF66; 
             font-size: 32px; 
             margin-bottom: 16px;
-            min-height: 134px;
-            max-height: 134px;
-            overflow-y: auto;
+            overflow: hidden;
         ">In attesa che il docente inizi a parlare... Il testo comparirà qui.</div>
         
         <div id="text-en" style="
@@ -48,9 +44,7 @@ js_speech_component = """
             font-style: italic; 
             border-top: 1px solid #222; 
             padding-top: 12px;
-            min-height: 100px;
-            max-height: 100px;
-            overflow-y: auto;
+            overflow: hidden;
         ">The English translation will appear here.</div>
     </div>
 
@@ -129,24 +123,19 @@ js_speech_component = """
         recognition.onresult = (event) => {
             let fraseCorrenteIt = '';
             
-            // Estrae solo l'ultimo blocco di parlato attivo per la logica di sostituzione riga per riga
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 fraseCorrenteIt = event.results[i][0].transcript.trim();
             }
             
-            // 1. Aggiorna il testo italiano nel suo contenitore dedicato (va a capo da solo)
             if (fraseCorrenteIt.length > 0) {
                 textItDiv.innerText = fraseCorrenteIt;
-                textItDiv.scrollTop = textItDiv.scrollHeight;
             }
 
-            // 2. Traduzione simultanea della frase corrente in inglese
             clearTimeout(translationTimeout);
             translationTimeout = setTimeout(async () => {
                 if (fraseCorrenteIt.length > 0) {
                     const traduzioneEn = await traduciInInglese(fraseCorrenteIt);
                     textEnDiv.innerText = traduzioneEn;
-                    textEnDiv.scrollTop = textEnDiv.scrollHeight;
                 }
             }, 300);
         };
@@ -154,6 +143,5 @@ js_speech_component = """
 </script>
 """
 
-# Abbiamo aumentato leggermente l'altezza dell'iframe di Streamlit (da 290 a 350) 
-# per accomodare comodamente il nuovo banner verticale più spazioso
-components.html(js_speech_component, height=350)
+# CORREZIONE CRITICA: Portato l'height a 400px per contenere comodamente l'intera estensione della pagina senza tagliare la barra dei controlli
+components.html(js_speech_component, height=400)
