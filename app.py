@@ -7,31 +7,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. STILE CSS PERSONALIZZATO ---
-st.markdown("""
-    <style>
-    .instruction-text {
-        font-size: 18px;
-        color: #888888;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 3. INIZIALIZZAZIONE STATO ---
-if "cronologia_trascrizione" not in st.session_state:
-    st.session_state.cronologia_trascrizione = []
-
-# --- 4. INTERFACCIA UTENTE ---
+# --- 2. INTERFACCIA UTENTE ---
 st.title("🧏 Morpheus Live Subtitles & Translation")
 st.subheader("Sottotitoli automatici e traduzione simultanea in inglese ad alta visibilità")
 st.divider()
 
-# --- 5. LOGICA DI ASCOLTO CONTINUO, TRADUZIONE ED ELABORAZIONE ---
+# --- 3. LOGICA DI ASCOLTO CONTINUO, TRADUZIONE ED ELABORAZIONE ---
 st.write("### 🎙️ Stato Microfono Continuo")
 
 import streamlit.components.v1 as components
 
-# [Il codice dentro js_speech_component rimane identico a prima]
+# Blocco unico HTML/JS: gestisce microfono, traduzione e storico locale
 js_speech_component = """
 <div style="font-family: sans-serif; margin-bottom: 15px;">
     <!-- BANNER BILINGUE AD ALTO CONTRASTO -->
@@ -55,22 +41,41 @@ js_speech_component = """
     </div>
 
     <!-- CONTROLLI DI STATO E PULSANTE -->
-    <div style="color: #888888; font-size: 14px; padding: 12px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e;">
+    <div style="color: #888888; font-size: 14px; padding: 12px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e; margin-bottom: 25px;">
         <div>
             <span id="status-dot" style="height: 10px; width: 10px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
             <span id="status-text" style="color: #aaaaaa; font-weight: 500;">Microfono spento. Clicca sul pulsante per attivare l'ascolto continuo bilingue.</span>
         </div>
         <button id="start-btn" style="padding: 10px 20px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s;">🎯 AVVIA ASCOLTO CONTINUO</button>
     </div>
+
+    <!-- STORICO DELLA LEZIONE (GESTITO LATO CLIENT PER EVITARE CRASH) -->
+    <div style="margin-top: 20px;">
+        <h4 style="color: #ffffff; margin-bottom: 10px;">📝 Storico Trascrizione Completa (Italiano & English)</h4>
+        <div id="history-box" style="
+            background-color: #1a1a1a;
+            color: #dddddd;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            height: 250px;
+            overflow-y: auto;
+            font-size: 16px;
+            line-height: 1.6;
+        "><i style="color: #666;">Lo storico della lezione verrà generato automaticamente man mano che si consolideranno le frasi...</i></div>
+        <button id="clear-btn" style="margin-top: 10px; padding: 6px 12px; background-color: #333; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🗑️ Cancella Storico Locale</button>
+    </div>
 </div>
 
 <script>
     const startBtn = document.getElementById('start-btn');
+    const clearBtn = document.getElementById('clear-btn');
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
     const captionBanner = document.getElementById('caption-banner');
     const textItDiv = document.getElementById('text-it');
     const textEnDiv = document.getElementById('text-en');
+    const historyBox = document.getElementById('history-box');
     
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -85,6 +90,7 @@ js_speech_component = """
 
         let isRecognizing = false;
         let finalTranscriptIt = '';
+        let fullHistoryHTML = '';
 
         async function traduciInInglese(testo) {
             if (!testo.trim()) return '';
@@ -104,6 +110,11 @@ js_speech_component = """
                 window.autoRestartEnabled = false;
                 recognition.stop();
             }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            fullHistoryHTML = '';
+            historyBox.innerHTML = '<i style="color: #666;">Storico cancellato.</i>';
         });
 
         recognition.onstart = () => {
@@ -143,56 +154,36 @@ js_speech_component = """
                 }
             }
             
+            // 1. Aggiorna l'Italiano sul Banner principale
             let completoIt = finalTranscriptIt + interimTranscriptIt;
             if (completoIt.trim().length > 0) {
                 textItDiv.innerText = completoIt;
                 captionBanner.scrollTop = captionBanner.scrollHeight;
             }
 
+            // 2. Gestione Traduzione e Aggiornamento Storico
             clearTimeout(translationTimeout);
             translationTimeout = setTimeout(async () => {
                 if (completoIt.trim().length > 0) {
                     const traduzioneEn = await traduciInInglese(completoIt);
                     textEnDiv.innerText = traduzioneEn;
                     captionBanner.scrollTop = captionBanner.scrollHeight;
+
+                    // Se è stata consolidata una nuova frase finale, la scriviamo nel box dello storico bilingue
+                    if (currentFinalPhraseIt.length > 0) {
+                        const finalTranslationEn = await traduciInInglese(currentFinalPhraseIt);
+                        
+                        fullHistoryHTML += `<div><b style="color:#00FF66;">IT:</b> ${currentFinalPhraseIt}<br><i style="color:#FFCC00;"><b style="font-style:normal;">EN:</b> ${finalTranslationEn}</i></div><hr style="border-color:#2a2a2a; margin:8px 0;">`;
+                        historyBox.innerHTML = fullHistoryHTML;
+                        historyBox.scrollTop = historyBox.scrollHeight;
+                    }
                 }
             }, 400);
-
-            if (currentFinalPhraseIt.length > 0) {
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: currentFinalPhraseIt
-                }, '*');
-            }
         };
     }
 </script>
 """
 
-# Renderizziamo l'oggetto HTML/JS
-audio_data = components.html(js_speech_component, height=290)
-
-# --- CORREZIONE DEL BUG QUI ---
-# Estraiamo in modo sicuro la stringa testuale passata dal componente iframe di Streamlit
-if audio_data is not None:
-    # Se il dato è una stringa diretta, la usiamo, altrimenti la ignoriamo o convertiamo
-    testo_pulito = str(audio_data).strip()
-    
-    if testo_pulito and testo_pulito != "None":
-        if not st.session_state.cronologia_trascrizione or st.session_state.cronologia_trascrizione[-1] != testo_pulito:
-            st.session_state.cronologia_trascrizione.append(testo_pulito)
-
-# --- 6. CRONOLOGIA COMPLETA DELLA LEZIONE ---
-st.divider()
-with st.expander("📝 Guarda l'intera trascrizione della lezione (Storico Frasi in Italiano)"):
-    if st.session_state.cronologia_trascrizione:
-        # Ora st.session_state.cronologia_trascrizione contiene solo stringhe pulite!
-        testo_completo = " ... ".join(st.session_state.cronologia_trascrizione)
-        st.write(testo_completo)
-        
-        st.write("")
-        if st.button("🗑️ Cancella Storico Lezione", type="secondary"):
-            st.session_state.cronologia_trascrizione = []
-            st.rerun()
-    else:
-        st.info("Nessun testo registrato nello storico per ora.")
+# Renderizziamo l'interfaccia. Ho impostato l'altezza dell'Iframe a 600px 
+# per includere sia il banner gigante che lo storico bilingue integrato in basso.
+components.html(js_speech_component, height=600)
