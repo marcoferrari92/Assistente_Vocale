@@ -9,13 +9,14 @@ st.set_page_config(
 
 # --- 2. INTERFACCIA UTENTE ---
 st.title("🧏 Morpheus Live Subtitles & Translation")
+st.divider()
 
-# --- 3. LOGICA DI ASCOLTO CONTINUO, TRADUZIONE E BANNER ---
+# --- 3. LOGICA DI ASCOLTO CONTINUO CON SOSTITUZIONE TESTO ---
 st.write("### 🎙️ Stato Microfono Continuo")
 
 import streamlit.components.v1 as components
 
-# Blocco unico HTML/JS: gestisce microfono, trascrizione e traduzione nel browser
+# Blocco unico HTML/JS: gestisce microfono, trascrizione e traduzione a riga singola temporanea
 js_speech_component = """
 <div style="font-family: sans-serif; margin-bottom: 15px;">
     <!-- BANNER BILINGUE AD ALTO CONTRASTO -->
@@ -31,18 +32,18 @@ js_speech_component = """
         margin-bottom: 20px;
         border: 2px solid #333333;
         box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
-        overflow-y: auto;
+        overflow: hidden;
         word-wrap: break-word;
     ">
-        <div id="text-it" style="color: #00FF66; font-size: 32px; margin-bottom: 12px;">In attesa che il docente inizi a parlare... Il testo in italiano comparirà qui.</div>
-        <div id="text-en" style="color: #FFCC00; font-size: 26px; font-style: italic; border-top: 1px solid #222; padding-top: 8px;">The English translation will appear here.</div>
+        <div id="text-it" style="color: #00FF66; font-size: 32px; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">In attesa che il docente inizi a parlare...</div>
+        <div id="text-en" style="color: #FFCC00; font-size: 26px; font-style: italic; border-top: 1px solid #222; padding-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">The English translation will appear here.</div>
     </div>
 
     <!-- CONTROLLI DI STATO E PULSANTE -->
     <div style="color: #888888; font-size: 14px; padding: 12px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e;">
         <div>
             <span id="status-dot" style="height: 10px; width: 10px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
-            <span id="status-text" style="color: #aaaaaa; font-weight: 500;">Microfono spento. Clicca sul pulsante per attivare l'ascolto continuo bilingue.</span>
+            <span id="status-text" style="color: #aaaaaa; font-weight: 500;">Microfono spento. Clicca sul pulsante per attivare l'ascolto continuo monoriga.</span>
         </div>
         <button id="start-btn" style="padding: 10px 20px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s;">🎯 AVVIA ASCOLTO CONTINUO</button>
     </div>
@@ -52,7 +53,6 @@ js_speech_component = """
     const startBtn = document.getElementById('start-btn');
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
-    const captionBanner = document.getElementById('caption-banner');
     const textItDiv = document.getElementById('text-it');
     const textEnDiv = document.getElementById('text-en');
     
@@ -68,7 +68,6 @@ js_speech_component = """
         recognition.lang = 'it-IT';
 
         let isRecognizing = false;
-        let finalTranscriptIt = '';
 
         async function traduciInInglese(testo) {
             if (!testo.trim()) return '';
@@ -77,7 +76,7 @@ js_speech_component = """
                 const data = await response.json();
                 return data[0].map(item => item[0]).join('');
             } catch (error) {
-                return 'Translation error...';
+                return 'Translation...';
             }
         }
 
@@ -94,7 +93,7 @@ js_speech_component = """
             isRecognizing = true;
             window.autoRestartEnabled = true;
             statusDot.style.background = "#2ecc71";
-            statusText.innerText = "Microfono ATTIVO. Servizio di sottotitolazione e traduzione simultanea in corso.";
+            statusText.innerText = "Microfono ATTIVO. Il testo si sostituirà riga per riga ad ogni pausa.";
             startBtn.innerText = "⏹️ FERMA ASCOLTO";
             startBtn.style.backgroundColor = "#e74c3c";
         };
@@ -114,38 +113,30 @@ js_speech_component = """
         let translationTimeout;
 
         recognition.onresult = (event) => {
-            let interimTranscriptIt = '';
-
+            let fraseCorrenteIt = '';
+            
+            // Estraiamo SOLO l'ultimo blocco di parlato attivo, ignorando lo storico precedente
             for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscriptIt += event.results[i][0].transcript.trim() + ' ';
-                } else {
-                    interimTranscriptIt += event.results[i][0].transcript;
-                }
+                fraseCorrenteIt = event.results[i][0].transcript.trim();
             }
             
-            // 1. Aggiorna l'Italiano sul Banner principale istantaneamente
-            let completoIt = finalTranscriptIt + interimTranscriptIt;
-            if (completoIt.trim().length > 0) {
-                textItDiv.innerText = completoIt;
-                captionBanner.scrollTop = captionBanner.scrollHeight;
+            // 1. Aggiorna l'Italiano sostituendo completamente la riga precedente
+            if (fraseCorrenteIt.length > 0) {
+                textItDiv.innerText = fraseCorrenteIt;
             }
 
-            // 2. Gestione Traduzione simultanea in Inglese
+            // 2. Traduzione simultanea della sola riga attiva (con debounce ottimizzato)
             clearTimeout(translationTimeout);
             translationTimeout = setTimeout(async () => {
-                if (completoIt.trim().length > 0) {
-                    const traduzioneEn = await traduciInInglese(completoIt);
+                if (fraseCorrenteIt.length > 0) {
+                    const traduzioneEn = await traduciInInglese(fraseCorrenteIt);
                     textEnDiv.innerText = traduzioneEn;
-                    captionBanner.scrollTop = captionBanner.scrollHeight;
                 }
-            }, 400);
+            }, 300);
         };
     }
 </script>
 """
 
-# Renderizziamo l'interfaccia isolata (Banner + Controlli di start)
-# Senza variabili di ritorno a Streamlit, non avverrà nessun ricaricamento di pagina
+# Renderizziamo l'interfaccia bilingue monoriga fissa
 components.html(js_speech_component, height=290)
-
