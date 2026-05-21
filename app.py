@@ -8,7 +8,7 @@ st.set_page_config(
 )
 
 # --- 2. INTERFACCIA UTENTE ---
-st.title("🧏 Morpheus Live Subtitles & Translation")
+st.title("Imprendo - Corsi in Multilingua")
 st.divider()
 
 # --- 3. LOGICA DI ASCOLTO CONTINUO CON BANNER MULTI-RIGA AUTOMATICO ---
