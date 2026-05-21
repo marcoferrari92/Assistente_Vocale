@@ -1,7 +1,4 @@
 import streamlit as st
-from openai import OpenAI
-from audio_recorder_streamlit import audio_recorder
-import io
 
 # --- 1. CONFIGURAZIONE PAGINA AD ALTO CONTRASTO ---
 st.set_page_config(
@@ -11,7 +8,6 @@ st.set_page_config(
 )
 
 # --- 2. STILE CSS PERSONALIZZATO PER IL BANNER ---
-# Crea un banner nero fisso in alto, con testo bianco molto grande e leggibile
 st.markdown("""
     <style>
     .caption-banner {
@@ -35,15 +31,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. INIZIALIZZAZIONE STATO E UTILI ---
+# --- 3. INIZIALIZZAZIONE STATO ---
 if "cronologia_trascrizione" not in st.session_state:
     st.session_state.cronologia_trascrizione = []
-
-if "openai_key" in st.secrets:
-    client = OpenAI(api_key=st.secrets["openai_key"])
-else:
-    st.sidebar.error("⚠️ Inserisci la chiave API 'openai_key' nei Secrets per procedere.")
-    client = None
 
 # --- 4. INTERFACCIA UTENTE ---
 st.title("🧏 Morpheus Live Subtitles")
@@ -53,7 +43,7 @@ st.divider()
 # Area del Banner di Sottotitolazione
 placeholder_banner = st.empty()
 
-# Renderizziamo il banner iniziale o l'ultimo testo rilevato
+# Gestione testo da visualizzare sul Banner principale
 if st.session_state.cronologia_trascrizione:
     testo_visualizzato = st.session_state.cronologia_trascrizione[-1]
 else:
@@ -64,59 +54,110 @@ placeholder_banner.markdown(
     unsafe_allow_html=True
 )
 
-# --- 5. LOGICA DI ASCOLTO E TRASCRIZIONE ---
-st.write("### 🎙️ Controllo Microfono")
-st.markdown('<p class="instruction-text">Clicca sul microfono per avviare l\'ascolto. Il sistema rileverà automaticamente le pause del parlato per aggiornare il banner.</p>', unsafe_allow_html=True)
+# --- 5. LOGICA DI ASCOLTO CONTINUO (JAVASCRIPT EMBED) ---
+st.write("### 🎙️ Stato Microfono Continuo")
 
-if client:
-    # Il componente audio_recorder gestisce autonomamente il buffer di registrazione
-    # energy_threshold=(-1.0, 1.0) aiuta a regolare la sensibilità al silenzio
-    audio_bytes = audio_recorder(
-        text="Ascolto attivo... Parla ora",
-        recording_color="#e74c3c",
-        neutral_color="#2ecc71",
-        icon_size="3x",
-        pause_threshold=2.0 # Invia l'audio all'AI dopo 2 secondi di silenzio
-    )
+# Riceve i dati inviati dal componente JavaScript personalizzato
+# Nota: La Web Speech API usa i modelli vocali locali del browser (es. Google Speech su Chrome)
+import streamlit.components.v1 as components
 
-    if audio_bytes:
-        try:
-            # Trasformiamo i byte audio in un file virtuale per l'API di OpenAI
-            audio_file = io.BytesIO(audio_bytes)
-            audio_file.name = "chunk_lezione.wav"
+# Script HTML/JS per gestire il microfono sempre attivo
+js_speech_component = """
+<div style="font-family: sans-serif; color: #888888; font-size: 14px; padding: 10px; border: 1px dashed #333; border-radius: 8px;">
+    <span id="status-dot" style="height: 10px; width: 10px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
+    <span id="status-text">Microfono spento. Clicca sul pulsante per attivare l'ascolto continuo.</span>
+    <br><br>
+    <button id="start-btn" style="padding: 10px 20px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🎯 AVVIA ASCOLTO CONTINUO</button>
+</div>
+
+<script>
+    const startBtn = document.getElementById('start-btn');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    
+    // Verifica supporto browser
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+        statusText.innerText = "Errore: Il tuo browser non supporta il riconoscimento vocale continuo. Usa Google Chrome o Microsoft Edge.";
+        startBtn.style.display = 'none';
+    } else {
+        const recognition = new SpeechRecognition();
+        
+        // Impostazioni per ascolto continuo senza interruzioni
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'it-IT';
+
+        let isRecognizing = false;
+
+        startBtn.addEventListener('click', () => {
+            if (!isRecognizing) {
+                recognition.start();
+            } else {
+                recognition.stop();
+            }
+        });
+
+        recognition.onstart = () => {
+            isRecognizing = true;
+            statusDot.style.background = "#2ecc71";
+            statusText.innerText = "Microfono ATTIVO in modalità continua. Il docente può parlare liberamente.";
+            startBtn.innerText = "⏹️ FERMA ASCOLTO";
+            startBtn.style.backgroundColor = "#e74c3c";
+        };
+
+        recognition.onend = () => {
+            isRecognizing = false;
+            statusDot.style.background = "#e74c3c";
+            statusText.innerText = "Microfono disattivato.";
+            startBtn.innerText = "🎯 AVVIA ASCOLTO CONTINUO";
+            startBtn.style.backgroundColor = "#2ecc71";
             
-            # Chiamata rapida a Whisper per la trascrizione in italiano
-            with st.spinner("Traduzione del parlato in corso..."):
-                transcript = client.audio.transcriptions.create(
-                    model="whisper-1", 
-                    file=audio_file, 
-                    language="it"
-                )
+            // Auto-restart di sicurezza se si disconnette durante la lezione
+            if(window.autoRestartEnabled) {
+                recognition.start();
+            }
+        };
+
+        recognition.onresult = (event) => {
+            // Prende l'ultimo blocco di testo elaborato dopo una pausa naturale
+            const lastResultIndex = event.results.length - 1;
+            const textOutput = event.results[lastResultIndex][0].transcript.trim();
             
-            testo_rilevato = transcript.text.strip()
-            
-            if testo_rilevato:
-                # Salviamo nella cronologia e aggiorna il banner istantaneamente
-                st.session_state.cronologia_trascrizione.append(testo_rilevato)
-                
-                # Aggiorna il banner dinamico con l'ultima frase
-                placeholder_banner.markdown(
-                    f'<div class="caption-banner">{testo_rilevato}</div>', 
-                    unsafe_allow_html=True
-                )
-                
-        except Exception as e:
-            st.error(f"Errore di trascrizione AI: {e}")
+            if (textOutput.length > 0) {
+                // Invia la stringa di testo direttamente a Streamlit simulando un cambio di stato
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: textOutput
+                }, '*');
+            }
+        };
+        
+        // Mantieni attivo il microfono anche se il docente fa pause lunghe
+        window.autoRestartEnabled = true;
+    }
+</script>
+"""
+
+# Renderizziamo il microfono JS invisibile/indipendente dal ciclo di Streamlit
+# Altezza minima di sicurezza per mostrare i controlli di avvio
+audio_data = components.html(js_speech_component, height=110)
+
+# Se JavaScript rileva una nuova frase, la inserisce nello stato senza perdere il focus del mic
+if audio_data:
+    # Evitiamo duplicati se la pagina si refresha rapidamente
+    if not st.session_state.cronologia_trascrizione or st.session_state.cronologia_trascrizione[-1] != audio_data:
+        st.session_state.cronologia_trascrizione.append(audio_data)
+        st.rerun()
 
 # --- 6. CRONOLOGIA COMPLETA DELLA LEZIONE ---
 st.divider()
 with st.expander("📝 Guarda l'intera trascrizione della lezione (Storico Frasi)"):
     if st.session_state.cronologia_trascrizione:
-        # Mostra i testi uno dopo l'altro per permettere il riassunto o lo studio successivo
         testo_completo = " ".join(st.session_state.cronologia_trascrizione)
         st.write(testo_completo)
         
-        # Pulsante per cancellare lo storico se necessario
         if st.button("🗑️ Cancella Storico Lezione"):
             st.session_state.cronologia_trascrizione = []
             st.rerun()
