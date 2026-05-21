@@ -47,7 +47,7 @@ else:
 
 # --- 4. INTERFACCIA UTENTE ---
 st.title("🧏 Morpheus Live Subtitles")
-st.subtitle("Sottotitoli automatici ad alta visibilità per l'ascolto delle lezioni")
+st.subheader("Sottotitoli automatici ad alta visibilità per l'ascolto delle lezioni") # <--- Sostituito st.subtitle con st.subheader
 st.divider()
 
 # Area del Banner di Sottotitolazione
