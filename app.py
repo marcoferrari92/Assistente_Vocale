@@ -1,5 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import urllib.parse
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(
@@ -8,7 +9,51 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. DIZIONARIO LINGUE SUPPORTATE ---
+# --- 2. SISTEMA DI LOGIN CON BANCA DATI DA STREAMLIT SECRETS ---
+def check_password():
+    """Restituisce True se l'utente ha inserito le credenziali corrette."""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    # Se l'utente è già autenticato, procedi subito
+    if st.session_state.authenticated:
+        return True
+
+    # Mostra il form di login
+    st.title("🔒 Accesso a Imprendo Multilingua")
+    st.write("Inserisci le tue credenziali per accedere allo strumento di trascrizione.")
+    
+    with st.form("login_form"):
+        user_input = st.text_input("Username")
+        password_input = st.text_input("Password", type="password")
+        submit_button = st.form_submit_button("Accedi")
+        
+        if submit_button:
+            # Recupera i dati dal file secrets.toml
+            try:
+                secret_user = st.secrets["credentials"]["username"]
+                secret_pass = st.secrets["credentials"]["password"]
+                
+                if user_input == secret_user and password_input == secret_pass:
+                    st.session_state.authenticated = True
+                    st.success("Accesso effettuato! Caricamento dell'app...")
+                    st.rerun()
+                else:
+                    st.error("❌ Username o Password errati.")
+            except KeyError:
+                st.error("⚠️ Configurazione interrotta: File secrets.toml non trovato o malformato.")
+                
+    return False
+
+# Blocca l'applicazione se il login fallisce
+if not check_password():
+    st.stop()
+
+# =====================================================================
+# DA QUI IN POI L'UTENTE È AUTENTICATO (LOGGATO)
+# =====================================================================
+
+# --- 3. DIZIONARIO LINGUE SUPPORTATE ---
 DIZ_LINGUE = {
     "Italiano": {"speech": "it-IT", "trans": "it"},
     "English (Inglese)": {"speech": "en-US", "trans": "en"},
@@ -17,49 +62,66 @@ DIZ_LINGUE = {
     "Deutsch (Tedesco)": {"speech": "de-DE", "trans": "de"}
 }
 
-# --- 3. CONFIGURAZIONE BARRA LATERALE ---
-st.sidebar.title("⚙️ Impostazioni")
+# --- 4. GESTIONE PARAMETRI URL ---
+query_params = st.query_params
+default_parlata = query_params.get("lang_from", "Italiano")
+default_traduzione = query_params.get("lang_to", "English (Inglese)")
+is_popup_window = query_params.get("mode", "standard") == "popup"
 
-lingua_parlata_nome = st.sidebar.selectbox(
-    "🎙️ Lingua Parlata (Docente):", 
-    options=list(DIZ_LINGUE.keys()), 
-    index=0
-)
+if default_parlata not in DIZ_LINGUE: default_parlata = "Italiano"
+if default_traduzione not in DIZ_LINGUE: default_traduzione = "English (Inglese)"
 
-lingua_traduzione_nome = st.sidebar.selectbox(
-    "🔤 Lingua Traduzione:", 
-    options=list(DIZ_LINGUE.keys()), 
-    index=1
-)
+index_parlata = list(DIZ_LINGUE.keys()).index(default_parlata)
+index_traduzione = list(DIZ_LINGUE.keys()).index(default_traduzione)
+
+# --- 5. INTERFACCIA (BARRA LATERALE E BANNER) ---
+if is_popup_window:
+    lingua_parlata_nome = default_parlata
+    lingua_traduzione_nome = default_traduzione
+    is_floating = True
+else:
+    st.sidebar.title("⚙️ Impostazioni")
+    
+    # Bottone di Logout rapido
+    if st.sidebar.button("🚪 Esci (Logout)"):
+        st.session_state.authenticated = False
+        st.rerun()
+        
+    st.sidebar.markdown("---")
+    
+    lingua_parlata_nome = st.sidebar.selectbox(
+        "🎙️ Lingua Parlata (Docente):", 
+        options=list(DIZ_LINGUE.keys()), 
+        index=index_parlata
+    )
+    lingua_traduzione_nome = st.sidebar.selectbox(
+        "🔤 Lingua Traduzione:", 
+        options=list(DIZ_LINGUE.keys()), 
+        index=index_traduzione
+    )
+    st.sidebar.markdown("---")
+    st.sidebar.write("📺 **Visualizzazione Banner:**")
+    modalita_visualizzazione = st.sidebar.radio(
+        "Scegli dove mostrare i sottotitoli:",
+        ["Incorporato nella pagina (Standard)", "Finestra Flottante (Overlay per presentazioni)"]
+    )
+    is_floating = modalita_visualizzazione == "Finestra Flottante (Overlay per presentazioni)"
 
 codice_ascolto = DIZ_LINGUE[lingua_parlata_nome]["speech"]
 codice_da = DIZ_LINGUE[lingua_parlata_nome]["trans"]
 codice_a = DIZ_LINGUE[lingua_traduzione_nome]["trans"]
 
-st.sidebar.markdown("---")
-st.sidebar.write("📺 **Visualizzazione Banner:**")
-
-# SELETTORE PER LA MODALITÀ
-modalita_visualizzazione = st.sidebar.radio(
-    "Scegli dove mostrare i sottotitoli:",
-    ["Incorporato nella pagina (Standard)", "Finestra Flottante (Overlay per presentazioni)"]
-)
-
-# --- 4. STRUTTURA DEL COMPONENTE JAVASCRIPT (BANNER REATTIVO) ---
-# Il CSS e la logica cambiano leggermente in base alla modalità scelta per ottimizzare gli spazi
-is_floating = modalita_visualizzazione == "Finestra Flottante (Overlay per presentazioni)"
-
 altezza_banner = "75px" if is_floating else "135px"
 altezza_traduzione = "65px" if is_floating else "100px"
 altezza_iframe = 220 if is_floating else 450
 
+# --- 6. COMPONENTE JAVASCRIPT ---
 js_speech_component = """
 <div id="recognition-container" 
      data-speech="{speech}" 
      data-from="{from_lang}" 
      data-to="{to_lang}"
      style="font-family: sans-serif; margin-bottom: 5px;">
-     
     <div id="caption-banner" style="
         background-color: #111111;
         padding: 20px;
@@ -92,7 +154,6 @@ js_speech_component = """
             overflow-y: auto;
         ">La traduzione simultanea comparirà qui.</div>
     </div>
-
     <div style="color: #888888; font-size: 13px; padding: 10px; border: 1px solid #333; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; background-color: #1e1e1e; margin-top: 8px;">
         <div>
             <span id="status-dot" style="height: 9px; width: 9px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
@@ -101,7 +162,6 @@ js_speech_component = """
         <button id="start-btn" style="padding: 8px 16px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s; font-size: 12px;">🎯 AVVIA ASCOLTO CONTINUO</button>
     </div>
 </div>
-
 <script>
     const container = document.getElementById('recognition-container');
     const startBtn = document.getElementById('start-btn');
@@ -109,81 +169,61 @@ js_speech_component = """
     const statusText = document.getElementById('status-text');
     const textItDiv = document.getElementById('text-it');
     const textEnDiv = document.getElementById('text-en');
-    
     const langSpeech = container.getAttribute('data-speech');
     const langFrom = container.getAttribute('data-from');
     const langTo = container.getAttribute('data-to');
-    
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
-        statusText.innerText = "Errore: Browser non supportato. Usa Chrome o Edge.";
+        statusText.innerText = "Errore: Browser non supportato.";
         startBtn.style.display = 'none';
     } else {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = langSpeech;
-
         let isRecognizing = false;
 
         async function traduciTesto(testo) {
             if (!testo.trim()) return '';
             if (langFrom === langTo) return testo;
-            
             try {
                 const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${langFrom}&tl=${langTo}&dt=t&q=${encodeURIComponent(testo)}`);
                 const data = await response.json();
                 return data[0].map(item => item[0]).join('');
-            } catch (error) {
-                return 'Errore di traduzione...';
-            }
+            } catch (error) { return 'Errore...'; }
         }
 
         startBtn.addEventListener('click', () => {
-            if (!isRecognizing) {
-                recognition.start();
-            } else {
-                window.autoRestartEnabled = false;
-                recognition.stop();
-            }
+            if (!isRecognizing) { recognition.start(); } 
+            else { window.autoRestartEnabled = false; recognition.stop(); }
         });
 
         recognition.onstart = () => {
-            isRecognizing = true;
-            window.autoRestartEnabled = true;
-            statusDot.style.background = "#2ecc71";
-            statusText.innerText = "Microfono ATTIVO. Riconoscimento in corso...";
-            startBtn.innerText = "⏹️ FERMA ASCOLTO";
-            startBtn.style.backgroundColor = "#e74c3c";
+            isRecognizing = true; window.autoRestartEnabled = true;
+            statusDot.style.background = "#2ecc71"; statusText.innerText = "Ascolto...";
+            startBtn.innerText = "⏹️ FERMA ASCOLTO"; startBtn.style.backgroundColor = "#e74c3c";
         };
 
         recognition.onend = () => {
             isRecognizing = false;
-            if (window.autoRestartEnabled) {
-                recognition.start();
-            } else {
-                statusDot.style.background = "#e74c3c";
-                statusText.innerText = "Microfono disattivato.";
-                startBtn.innerText = "🎯 AVVIA ASCOLTO CONTINUO";
-                startBtn.style.backgroundColor = "#2ecc71";
+            if (window.autoRestartEnabled) { recognition.start(); } 
+            else {
+                statusDot.style.background = "#e74c3c"; statusText.innerText = "Spento.";
+                startBtn.innerText = "🎯 AVVIA ASCOLTO CONTINUO"; startBtn.style.backgroundColor = "#2ecc71";
             }
         };
 
         let translationTimeout;
-
         recognition.onresult = (event) => {
             let fraseCorrente = '';
-            
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 fraseCorrente = event.results[i][0].transcript.trim();
             }
-            
             if (fraseCorrente.length > 0) {
                 textItDiv.innerText = fraseCorrente;
                 textItDiv.scrollTop = textItDiv.scrollHeight;
             }
-
             clearTimeout(translationTimeout);
             translationTimeout = setTimeout(async () => {
                 if (fraseCorrente.length > 0) {
@@ -201,37 +241,39 @@ js_speech_component = """
    .replace("{h_banner}", altezza_banner)\
    .replace("{h_trans}", altezza_traduzione)
 
-# --- 5. LOGICA DI RENDERING IN BASE ALLA SELEZIONE ---
-if not is_floating:
-    # MODALITÀ STANDARD: Mostra il titolo e il banner grande dentro Streamlit
-    st.title("Imprendo - Corsi in Multilingua")
-    st.write("Sottotitoli integrati nella pagina web corrente.")
-    components.html(js_speech_component, height=altezza_iframe)
-else:
-    # MODALITÀ FLOTTANTE: Svuota la pagina principale e mette un bottone per lanciare il popup
-    st.title("📺 Modalità Banner Flottante Attivata")
-    st.write("Configura le lingue a sinistra e clicca il pulsante qui sotto per aprire il banner esterno.")
-    
-    # Questo pulsante genera lo script che forza il browser ad aprire una finestra popup pulita
-    if st.button("🚀 APRI ORA IL BANNER ESTERNO", type="primary"):
-        # Generiamo un URL pulito che contiene un parametro per dire a Streamlit di mostrare solo il banner
-        js_popup = """
-        <script>
-            var popupUrl = window.parent.location.href;
-            // Apre una finestra popup senza barre di navigazione, posizionata in basso
-            window.open(popupUrl, 'SottotitoliOverlay', 'width=1100,height=260,top=750,left=150,toolbar=no,menubar=no,scrollbars=no,resizable=yes');
-        </script>
-        """
-        components.html(js_popup, height=0)
-    
-    # Se la finestra corrente viene intercettata come l'effettivo popup, mostriamo solo il banner senza nient'altro attorno
+# --- 7. RENDERING DELLE MODALITÀ ---
+if is_popup_window:
+    # Se è la finestra popup, pulisci tutto il layout grafico residuo
     st.markdown("""
         <style>
             #MainMenu, header, footer {visibility: hidden;}
             .stDeployButton {display:none;}
-            div[block-class="main"] {padding: 0px;}
+            div[block-class="main"] {padding: 0px !important;}
+            iframe {border: none;}
         </style>
     """, unsafe_allow_index=True)
-    
-    # Mostriamo comunque il componente nel caso in cui siamo dentro il popup
     components.html(js_speech_component, height=altezza_iframe)
+
+else:
+    # Interfaccia standard post-login
+    if not is_floating:
+        st.title("Imprendo - Corsi in Multilingua")
+        st.write("Sottotitoli integrati nella pagina web corrente.")
+        components.html(js_speech_component, height=altezza_iframe)
+    else:
+        st.title("📺 Modalità Banner Flottante Pronta")
+        st.write(f"Hai configurato: **{lingua_parlata_nome}** ➡️ **{lingua_traduzione_nome}**")
+        st.write("Clicca il pulsante qui sotto per generare l'overlay.")
+        
+        p_from = urllib.parse.quote(lingua_parlata_nome)
+        p_to = urllib.parse.quote(lingua_traduzione_nome)
+        
+        js_popup = f"""
+        <script>
+            var currentUrl = window.parent.location.href.split('?')[0];
+            var targetUrl = currentUrl + "?mode=popup&lang_from={p_from}&lang_to={p_to}";
+            window.open(targetUrl, 'SottotitoliOverlay', 'width=1100,height=250,top=750,left=150,toolbar=no,menubar=no,scrollbars=no,resizable=yes');
+        </script>
+        """
+        if st.button("🚀 APRI ORA IL BANNER ESTERNO", type="primary"):
+            components.html(js_popup, height=0)
